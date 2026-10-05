@@ -1,0 +1,10 @@
+[package]
+name = "sqlite-workbench"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A native SQLite data workbench built with GPUI Kit"
+publish = false
+
+[dependencies]
+gpui-kit = "0.7.0"
