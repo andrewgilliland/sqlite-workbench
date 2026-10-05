@@ -1,6 +1,7 @@
 use gpui_kit::component::{
-    ActiveTheme, IconName, Theme, ThemeMode,
+    ActiveTheme, Theme, ThemeMode,
     button::{Button, ButtonVariants},
+    switch::Switch,
 };
 use gpui_kit::*;
 
@@ -57,18 +58,14 @@ impl Render for Workbench {
                             .items_center()
                             .gap_2()
                             .child(
-                                Button::new("theme-toggle")
-                                    .icon(if is_dark {
-                                        IconName::Sun
-                                    } else {
-                                        IconName::Moon
-                                    })
-                                    .label(if is_dark { "Light mode" } else { "Dark mode" })
-                                    .on_click(|_, window, cx| {
-                                        let mode = if cx.theme().is_dark() {
-                                            ThemeMode::Light
-                                        } else {
+                                Switch::new("theme-toggle")
+                                    .label("Dark mode")
+                                    .checked(is_dark)
+                                    .on_change(|checked, window, cx| {
+                                        let mode = if *checked {
                                             ThemeMode::Dark
+                                        } else {
+                                            ThemeMode::Light
                                         };
                                         Theme::change(mode, Some(window), cx);
                                     }),
