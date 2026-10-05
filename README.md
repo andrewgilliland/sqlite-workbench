@@ -47,7 +47,14 @@ themes, clicking Open Database, resizing the window, and closing it.
 ## Structure
 
 - `src/main.rs`: framework initialization, assets, window creation, and app lifecycle.
-- `src/shell.rs`: themed layout and persistent placeholder interaction state.
+- `src/shell.rs`: shell composition and persistent placeholder interaction state.
+- `src/shell/header.rs`: title, theme switch, and Open Database button.
+- `src/shell/database_explorer.rs`: database explorer sidebar.
+- `src/shell/welcome_panel.rs`: welcome content.
+- `src/shell/status_bar.rs`: accessible connection status and framework label.
+
+The child modules render stateless elements. The shell owns interaction state and
+passes the Open Database callback to the header.
 
 The application uses the styled component layer; "shell" refers to the desktop layout,
 not the optional JavaScript extension system (`gpui-shell`).
