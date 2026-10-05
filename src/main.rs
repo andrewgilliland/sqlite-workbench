@@ -1,10 +1,12 @@
 mod shell;
 
+use gpui_kit::component::Theme;
 use gpui_kit::*;
 
 fn main() {
     application().with_assets(assets::Assets).run(|cx| {
         init(cx);
+        Theme::sync_system_appearance(None, cx);
 
         cx.on_window_closed(|cx, _| {
             if cx.windows().is_empty() {

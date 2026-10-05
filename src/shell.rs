@@ -1,5 +1,5 @@
 use gpui_kit::component::{
-    ActiveTheme,
+    ActiveTheme, IconName, Theme, ThemeMode,
     button::{Button, ButtonVariants},
 };
 use gpui_kit::*;
@@ -16,6 +16,7 @@ impl Render for Workbench {
         let foreground = theme.foreground;
         let muted = theme.muted_foreground;
         let border = theme.border;
+        let is_dark = theme.is_dark();
         let status = if self.open_requested {
             "Opening databases is coming next. No database connected."
         } else {
@@ -51,13 +52,36 @@ impl Render for Workbench {
                             ),
                     )
                     .child(
-                        Button::new("open-database")
-                            .primary()
-                            .label("Open Database")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.open_requested = true;
-                                cx.notify();
-                            })),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Button::new("theme-toggle")
+                                    .icon(if is_dark {
+                                        IconName::Sun
+                                    } else {
+                                        IconName::Moon
+                                    })
+                                    .label(if is_dark { "Light mode" } else { "Dark mode" })
+                                    .on_click(|_, window, cx| {
+                                        let mode = if cx.theme().is_dark() {
+                                            ThemeMode::Light
+                                        } else {
+                                            ThemeMode::Dark
+                                        };
+                                        Theme::change(mode, Some(window), cx);
+                                    }),
+                            )
+                            .child(
+                                Button::new("open-database")
+                                    .primary()
+                                    .label("Open Database")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.open_requested = true;
+                                        cx.notify();
+                                    })),
+                            ),
                     ),
             )
             .child(
@@ -125,7 +149,14 @@ impl Render for Workbench {
                     .border_color(border)
                     .text_xs()
                     .text_color(muted)
-                    .child(status)
+                    .child(
+                        div()
+                            .id("connection-status")
+                            .role(Role::Status)
+                            .aria_label(status)
+                            .test_support()
+                            .child(status),
+                    )
                     .child("GPUI Kit · Starter"),
             )
     }

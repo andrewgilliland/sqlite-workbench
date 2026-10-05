@@ -24,6 +24,10 @@ The window contains a header, database explorer sidebar, welcome panel, and stat
 Click **Open Database** to see the placeholder status update. No file picker or SQLite
 connection is implemented yet. Closing the window exits the application.
 
+Use the header's **Dark mode** / **Light mode** button to switch the entire app's
+theme. Its label describes the mode it will switch to. Startup matches the system
+appearance; manual changes last for the current session only.
+
 ## Development checks
 
 ```sh
@@ -33,8 +37,11 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 ```
 
-There are no automated tests yet; this version has no database behavior. Smoke-test
-the native UI by launching it, clicking the button, resizing the window, and closing it.
+The UI integration test clicks the production theme toggle in both directions and
+verifies that the theme changes without losing the database placeholder status.
+Run it on its own with `cargo test --test theme --locked`. Tests verify interaction
+and theme state, not pixels. Smoke-test the native UI by launching it, switching
+themes, clicking Open Database, resizing the window, and closing it.
 
 ## Structure
 

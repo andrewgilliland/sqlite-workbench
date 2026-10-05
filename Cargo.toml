@@ -8,3 +8,6 @@ publish = false
 
 [dependencies]
 gpui-kit = "0.7.0"
+
+[dev-dependencies]
+gpui-kit = { version = "0.7.0", features = ["test-support"] }
