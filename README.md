@@ -24,8 +24,9 @@ The window contains a header, database explorer sidebar, welcome panel, and stat
 Click **Open Database** to see the placeholder status update. No file picker or SQLite
 connection is implemented yet. Closing the window exits the application.
 
-Use the header's **Dark mode** switch to change the entire app's theme:
-on selects dark mode, off selects light mode. Startup matches the system
+Use the header's theme switch to change the entire app's theme:
+on selects **Dark mode**, off selects **Light mode**, and the label shows the
+current mode. Startup matches the system
 appearance; manual changes last for the current session only.
 
 ## Development checks

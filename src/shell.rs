@@ -59,7 +59,7 @@ impl Render for Workbench {
                             .gap_2()
                             .child(
                                 Switch::new("theme-toggle")
-                                    .label("Dark mode")
+                                    .label(if is_dark { "Dark mode" } else { "Light mode" })
                                     .checked(is_dark)
                                     .on_change(|checked, window, cx| {
                                         let mode = if *checked {

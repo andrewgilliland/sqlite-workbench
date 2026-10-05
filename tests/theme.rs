@@ -28,7 +28,7 @@ fn switches_theme_through_the_ui_without_losing_status(cx: &mut TestAppContext) 
     cx.update_window(handle, |_, window, cx| {
         window.render_frame(cx);
         assert!(!cx.theme().is_dark());
-        assert_eq!(window.find("theme-toggle").label(), Some("Dark mode"));
+        assert_eq!(window.find("theme-toggle").label(), Some("Light mode"));
         assert_eq!(window.find("theme-toggle").checked(), Some(false));
 
         window.click("open-database", cx);
@@ -43,7 +43,7 @@ fn switches_theme_through_the_ui_without_losing_status(cx: &mut TestAppContext) 
 
         window.click("theme-toggle", cx);
         assert!(!cx.theme().is_dark());
-        assert_eq!(window.find("theme-toggle").label(), Some("Dark mode"));
+        assert_eq!(window.find("theme-toggle").label(), Some("Light mode"));
         assert_eq!(window.find("theme-toggle").checked(), Some(false));
         assert_eq!(window.find("connection-status").label(), Some(status));
     })
