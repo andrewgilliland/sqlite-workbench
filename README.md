@@ -49,9 +49,9 @@ Existing files are validated, never silently reset or reseeded—even if all not
 have been deleted. Invalid, incompatible, or read-only files produce an error.
 The preview shows the first 200 notes ordered by id and reports additional rows.
 The initial preview is a snapshot; use a query to read externally changed data.
-There is no arbitrary-file picker or app-driven writing yet.
+There is no arbitrary-file picker; all reads and writes use this demo database.
 
-## Read SQL
+## Run SQL
 
 After opening the demo, edit the SQL and press **Run**. The editor starts with:
 
@@ -59,12 +59,25 @@ After opening the demo, edit the SQL and press **Run**. The editor starts with:
 SELECT id, body FROM notes ORDER BY id;
 ```
 
-Only one SELECT is supported, including SELECTs using common table expressions.
+Run one SELECT, INSERT, UPDATE, or DELETE, including common table expressions.
 Comments, a trailing terminator, and quoted semicolons are accepted. Scripts,
-writes (including RETURNING), schema changes, PRAGMAs, attachments, transaction
-controls, EXPLAIN, and top-level VALUES are rejected before execution. SQLite's
-parser validates statement tails and an authorizer denies non-read actions.
+writes with RETURNING, schema changes, PRAGMAs, attachments, transaction controls,
+EXPLAIN, and top-level VALUES are rejected before execution. SQLite's parser
+validates the entire statement tail before any write; an authorizer permits only
+supported actions. Writes target the demo's `notes` table, not arbitrary tables.
 These are scope restrictions, not a security sandbox.
+
+Writes commit immediately, with no Save action. The app displays **Write committed:
+N rows affected** only after COMMIT succeeds; zero affected rows is valid. Counts
+exclude changes made by triggers. A new run clears the prior outcome, so failed
+writes never reuse an earlier successful count. Read changes back with a SELECT.
+
+Each write owns an internal transaction. Constraint failures (including partial
+`OR FAIL` execution), lock failures, interrupted writes, and commit failures roll
+back before the worker returns. Deadline callbacks are disabled during rollback
+so cleanup is not interrupted. Successful COMMIT is the point of no return: a
+completed commit is reported as success, never as a post-commit timeout. Exceptional
+rollback failures caused by storage/allocation faults are not covered by the tests.
 
 Results show column headers even when empty. Text is quoted and escaped, SQL null
 is shown as `(SQL NULL)`, and blobs use hexadecimal `X'…'` notation. At most 200
@@ -75,8 +88,8 @@ connection and while busy; theme changes preserve SQL, results, and session stat
 New runs clear old results. Unsupported SQL, query errors, locks, and timeouts have
 distinct messages and allow retry without reconnecting.
 
-The connection waits up to one second for SQLite locks. Reads have a five-second
-cooperative deadline spanning preparation and stepping: progress callbacks interrupt
+The connection waits up to one second for SQLite locks. Execution has a five-second
+cooperative deadline spanning preparation, stepping, and write commit: callbacks interrupt
 the SQLite VM, rather than just abandoning the UI wait. A long built-in function or
 blocking I/O may delay the next callback; this is not a hard process-level timeout.
 Unknown or side-effecting functions and PRAGMA virtual tables are denied. Supported
@@ -110,9 +123,14 @@ Read tests cover SQLite types, statement restrictions, row and payload limits,
 real exclusive locking, five-second VM interruption, and subsequent recovery.
 Query UI tests enter SQL through native input, verify results/error presentation,
 prevent duplicate runs, and change themes while a real query is running.
+Write tests cover CRUD, zero counts, reopened persistence, script/RETURNING
+rejection, partial constraint failures, interrupted inserts, and actual lock
+failures during execution and commit. Write UI tests enter SQL through native
+input and verify committed counts, recovery, duplicate prevention, and persistence.
 Run individual targets with `cargo test --test database --locked`,
 `cargo test --test opening --locked`, `cargo test --test theme --locked`,
-`cargo test --test reads --locked`, or `cargo test --test query --locked`.
+`cargo test --test reads --locked`, `cargo test --test query --locked`,
+`cargo test --test writes --locked`, or `cargo test --test write_ui --locked`.
 These tests verify behavior and native accessibility properties, not pixels or
 packaged-app restart. Native SQL read/write/restart acceptance belongs to the final
 demo ticket; this slice does not claim that workflow is complete.
@@ -123,6 +141,7 @@ demo ticket; this slice does not claim that workflow is complete.
 - `src/lib.rs`: shared production modules for the binary and integration tests.
 - `src/database.rs`: demo path, atomic initialization, session, schema validation, preview.
 - `src/database/read.rs`: guarded SELECT execution, typed results, limits, and errors.
+- `src/database/write.rs`: single-statement dispatch and atomic committed writes.
 - `src/shell.rs`: shell composition, retained editor/session, and background tasks.
 - `src/shell/header.rs`: title, theme switch, and Open Demo Database button.
 - `src/shell/database_explorer.rs`: database explorer sidebar.
@@ -140,9 +159,8 @@ not the optional JavaScript extension system (`gpui-shell`).
 
 ## Next slices
 
-1. Add atomic committed writes (issue #4).
-2. Display returning write results without limiting the write (issue #5).
-3. Verify native restart and independent SQLite inspection (issue #6).
+1. Display returning write results without limiting the write (issue #5).
+2. Verify native restart and independent SQLite inspection (issue #6).
 
 Startup follows the [GPUI Kit getting-started example](https://gpui-kit.com/docs/getting-started).
 GPUI Kit and its source examples are licensed under Apache-2.0.

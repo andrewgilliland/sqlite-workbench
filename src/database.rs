@@ -9,6 +9,9 @@ use rusqlite::{Connection, OpenFlags};
 #[path = "database/read.rs"]
 mod read;
 pub use read::{CellValue, ReadError, ReadResult};
+#[path = "database/write.rs"]
+mod write;
+pub use write::ExecutionResult;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DatabaseError {

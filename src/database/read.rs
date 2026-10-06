@@ -16,12 +16,12 @@ use super::DemoSession;
 
 // These bound input and Rust-owned results, not all SQLite VM allocations.
 // Expansion-heavy blob/format functions are intentionally not in the allowlist.
-const MAX_SQL_BYTES: usize = 16 * 1024;
+pub(super) const MAX_SQL_BYTES: usize = 16 * 1024;
 const MAX_COLUMNS: usize = 256;
 const MAX_CELL_BYTES: usize = 1024 * 1024;
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_ROWS: usize = 200;
-const DEADLINE: Duration = Duration::from_secs(5);
+pub(super) const DEADLINE: Duration = Duration::from_secs(5);
 
 #[derive(Debug, PartialEq)]
 pub enum CellValue {
@@ -39,15 +39,16 @@ pub struct ReadResult {
     pub truncated: bool,
 }
 
+/// Shared execution failures; the name is retained for existing read callers.
 #[derive(Debug, thiserror::Error)]
 pub enum ReadError {
-    #[error("Unsupported read: {0}")]
+    #[error("Unsupported execution: {0}")]
     Unsupported(&'static str),
-    #[error("SQLite read failed: {0}")]
+    #[error("SQLite execution failed: {0}")]
     Sql(#[from] rusqlite::Error),
     #[error("Database is locked")]
     Locked,
-    #[error("Read exceeded the five-second deadline")]
+    #[error("Execution exceeded the five-second deadline")]
     Timeout,
 }
 
@@ -148,21 +149,39 @@ fn reserve_payload(size: usize, bytes: &mut usize) -> Result<(), ReadError> {
     Ok(())
 }
 
-struct ReadGuard<'a> {
+pub(super) struct ReadGuard<'a> {
     connection: &'a Connection,
     deadline: Instant,
     denied: Arc<AtomicBool>,
+    internal_transaction: Arc<AtomicBool>,
 }
 
 impl<'a> ReadGuard<'a> {
     fn install(connection: &'a Connection, deadline: Instant) -> Result<Self, ReadError> {
+        Self::install_with_mode(connection, deadline, false)
+    }
+
+    pub(super) fn install_write(
+        connection: &'a Connection,
+        deadline: Instant,
+    ) -> Result<Self, ReadError> {
+        Self::install_with_mode(connection, deadline, true)
+    }
+
+    fn install_with_mode(
+        connection: &'a Connection,
+        deadline: Instant,
+        writes: bool,
+    ) -> Result<Self, ReadError> {
         // Construct first so even a partially installed hook is cleaned up.
         let guard = Self {
             connection,
             deadline,
             denied: Arc::new(AtomicBool::new(false)),
+            internal_transaction: Arc::new(AtomicBool::new(false)),
         };
         let denied = Arc::clone(&guard.denied);
+        let internal_transaction = Arc::clone(&guard.internal_transaction);
         connection.authorizer(Some(move |context: AuthContext<'_>| {
             let allowed = match context.action {
                 AuthAction::Select | AuthAction::Recursive => true,
@@ -177,6 +196,16 @@ impl<'a> ReadGuard<'a> {
                         && !table_name.to_ascii_lowercase().starts_with("pragma_")
                 }
                 AuthAction::Function { function_name } => safe_function(function_name),
+                AuthAction::Insert { table_name }
+                | AuthAction::Update { table_name, .. }
+                | AuthAction::Delete { table_name } => {
+                    writes
+                        && context.database_name == Some("main")
+                        && table_name.eq_ignore_ascii_case("notes")
+                }
+                AuthAction::Transaction { .. } => {
+                    writes && internal_transaction.load(Ordering::Relaxed)
+                }
                 _ => false,
             };
             if allowed {
@@ -191,7 +220,7 @@ impl<'a> ReadGuard<'a> {
         Ok(guard)
     }
 
-    fn check_deadline(&self) -> Result<(), ReadError> {
+    pub(super) fn check_deadline(&self) -> Result<(), ReadError> {
         if Instant::now() >= self.deadline {
             Err(ReadError::Timeout)
         } else {
@@ -199,7 +228,7 @@ impl<'a> ReadGuard<'a> {
         }
     }
 
-    fn work<T>(&self, result: rusqlite::Result<T>) -> Result<T, ReadError> {
+    pub(super) fn work<T>(&self, result: rusqlite::Result<T>) -> Result<T, ReadError> {
         self.check_deadline()?;
         result.map_err(|error| {
             if self.denied.load(Ordering::Relaxed) {
@@ -216,6 +245,25 @@ impl<'a> ReadGuard<'a> {
             }
         })
     }
+
+    // Enable only transaction authorization, only while invoking our own SQL.
+    // The reset guard also runs on unwind. User preparation/reprepare never
+    // happens in this phase, including preparation of statement tails.
+    pub(super) fn internal<T>(&self, action: impl FnOnce() -> T) -> T {
+        struct Reset<'a>(&'a AtomicBool);
+        impl Drop for Reset<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Relaxed);
+            }
+        }
+        self.internal_transaction.store(true, Ordering::Relaxed);
+        let _reset = Reset(&self.internal_transaction);
+        action()
+    }
+
+    pub(super) fn clear_progress(&self) {
+        let _ = self.connection.progress_handler(0, None::<fn() -> bool>);
+    }
 }
 
 impl Drop for ReadGuard<'_> {
@@ -223,7 +271,7 @@ impl Drop for ReadGuard<'_> {
         // DemoSession privately owns a fresh connection with no other hooks.
         // None restores that baseline on every return/unwind; these APIs can
         // fail only for an unowned connection, which this session never uses.
-        let _ = self.connection.progress_handler(0, None::<fn() -> bool>);
+        self.clear_progress();
         let _ = self
             .connection
             .authorizer(None::<fn(AuthContext<'_>) -> Authorization>);
@@ -301,16 +349,42 @@ fn safe_function(name: &str) -> bool {
 }
 
 fn is_select(sql: &str) -> bool {
+    main_operation(sql) == Some(Operation::Select)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum Operation {
+    Select,
+    Insert,
+    Update,
+    Delete,
+}
+
+impl Operation {
+    fn from_token(token: Option<SqlToken<'_>>) -> Option<Self> {
+        let token = token?;
+        if token.keyword(b"select") {
+            Some(Self::Select)
+        } else if token.keyword(b"insert") {
+            Some(Self::Insert)
+        } else if token.keyword(b"update") {
+            Some(Self::Update)
+        } else if token.keyword(b"delete") {
+            Some(Self::Delete)
+        } else {
+            None
+        }
+    }
+}
+
+pub(super) fn main_operation(sql: &str) -> Option<Operation> {
     let mut tokens = SqlTokens(sql.as_bytes());
     let mut token = tokens.next();
     while token == Some(SqlToken::Symbol(b';')) {
         token = tokens.next();
     }
-    if token.is_some_and(|token| token.keyword(b"select")) {
-        return true;
-    }
     if !token.is_some_and(|token| token.keyword(b"with")) {
-        return false;
+        return Operation::from_token(token);
     }
     token = tokens.next();
     if token.is_some_and(|token| token.keyword(b"recursive")) {
@@ -320,17 +394,17 @@ fn is_select(sql: &str) -> bool {
         // A CTE name is an identifier, never a candidate main operation.
         // SQLite still decides which unquoted/quoted names are valid.
         if !matches!(token, Some(SqlToken::Word(_) | SqlToken::Quoted)) {
-            return false;
+            return None;
         }
         token = tokens.next();
         if token == Some(SqlToken::Symbol(b'(')) {
             if !skip_parentheses(&mut tokens) {
-                return false;
+                return None;
             }
             token = tokens.next();
         }
         if !token.is_some_and(|token| token.keyword(b"as")) {
-            return false;
+            return None;
         }
         token = tokens.next();
         if token.is_some_and(|token| token.keyword(b"not")) {
@@ -338,18 +412,18 @@ fn is_select(sql: &str) -> bool {
                 .next()
                 .is_some_and(|token| token.keyword(b"materialized"))
             {
-                return false;
+                return None;
             }
             token = tokens.next();
         } else if token.is_some_and(|token| token.keyword(b"materialized")) {
             token = tokens.next();
         }
         if token != Some(SqlToken::Symbol(b'(')) || !skip_parentheses(&mut tokens) {
-            return false;
+            return None;
         }
         token = tokens.next();
         if token != Some(SqlToken::Symbol(b',')) {
-            return token.is_some_and(|token| token.keyword(b"select"));
+            return Operation::from_token(token);
         }
         token = tokens.next();
     }

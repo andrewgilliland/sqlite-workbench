@@ -3,9 +3,13 @@ use gpui_kit::component::ActiveTheme;
 use gpui_kit::*;
 use std::fmt::Write;
 
-pub(super) fn render(result: Option<&ReadResult>, cx: &App) -> impl IntoElement {
+pub(super) fn render(
+    result: Option<&ReadResult>,
+    outcome_summary: Option<&str>,
+    cx: &App,
+) -> impl IntoElement {
     let summary = match result {
-        None => "No query results".to_owned(),
+        None => outcome_summary.unwrap_or("No query results").to_owned(),
         Some(result) if result.rows.is_empty() => "No rows returned".to_owned(),
         Some(result) => format!(
             "{} rows{}",

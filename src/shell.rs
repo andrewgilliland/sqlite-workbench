@@ -13,7 +13,7 @@ mod status_bar;
 #[path = "shell/welcome_panel.rs"]
 mod welcome_panel;
 
-use crate::database::{DemoSession, NotesPreview, ReadError, ReadResult, demo_path};
+use crate::database::{DemoSession, ExecutionResult, NotesPreview, ReadError, demo_path};
 use gpui_kit::component::{ActiveTheme, input::EditorState};
 use gpui_kit::*;
 use std::{
@@ -29,7 +29,7 @@ pub struct Workbench {
     running: bool,
     query_task: Option<Task<()>>,
     query_started: bool,
-    results: Option<ReadResult>,
+    results: Option<ExecutionResult>,
     query_status: Option<SharedString>,
 }
 
@@ -135,7 +135,10 @@ impl Workbench {
         // The UI only clones the handle. All session locking and SQLite work
         // stays here, including lock waits and the database execution deadline.
         let work = cx.background_spawn(async move {
-            session.lock().expect("database worker panicked").read(&sql)
+            session
+                .lock()
+                .expect("database worker panicked")
+                .execute(&sql)
         });
         self.query_task = Some(cx.spawn(async move |this, cx| {
             let result = work.await;
@@ -144,8 +147,8 @@ impl Workbench {
                 this.running = false;
                 match result {
                     Ok(result) => {
-                        this.query_status = Some(
-                            format!(
+                        this.query_status = Some(match &result {
+                            ExecutionResult::Read(result) => format!(
                                 "Query complete: {} rows{}",
                                 result.rows.len(),
                                 if result.truncated {
@@ -155,7 +158,10 @@ impl Workbench {
                                 }
                             )
                             .into(),
-                        );
+                            ExecutionResult::Write { affected_rows } => {
+                                format!("Write committed: {affected_rows} rows affected").into()
+                            }
+                        });
                         this.results = Some(result);
                     }
                     Err(error) => {
@@ -213,6 +219,14 @@ impl Render for Workbench {
             self.state,
             ConnectionState::Opening | ConnectionState::Connected { .. }
         );
+        let (read_result, write_summary) = match &self.results {
+            Some(ExecutionResult::Read(result)) => (Some(result), None),
+            Some(ExecutionResult::Write { affected_rows }) => (
+                None,
+                Some(format!("Write committed: {affected_rows} rows affected")),
+            ),
+            None => (None, None),
+        };
 
         div()
             .flex()
@@ -232,7 +246,8 @@ impl Render for Workbench {
                         active.is_none() || self.running,
                         on_run,
                         if self.query_started {
-                            query_results::render(self.results.as_ref(), cx).into_any_element()
+                            query_results::render(read_result, write_summary.as_deref(), cx)
+                                .into_any_element()
                         } else {
                             match active {
                                 Some((_, preview)) => {
