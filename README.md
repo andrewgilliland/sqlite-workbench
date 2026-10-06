@@ -48,8 +48,44 @@ A fully initialized temporary file is published without overwriting another file
 Existing files are validated, never silently reset or reseeded—even if all notes
 have been deleted. Invalid, incompatible, or read-only files produce an error.
 The preview shows the first 200 notes ordered by id and reports additional rows.
-Reopen the app to refresh externally changed data; this slice has no live refresh.
-There is no SQL editor, arbitrary-file picker, or app-driven writing yet.
+The initial preview is a snapshot; use a query to read externally changed data.
+There is no arbitrary-file picker or app-driven writing yet.
+
+## Read SQL
+
+After opening the demo, edit the SQL and press **Run**. The editor starts with:
+
+```sql
+SELECT id, body FROM notes ORDER BY id;
+```
+
+Only one SELECT is supported, including SELECTs using common table expressions.
+Comments, a trailing terminator, and quoted semicolons are accepted. Scripts,
+writes (including RETURNING), schema changes, PRAGMAs, attachments, transaction
+controls, EXPLAIN, and top-level VALUES are rejected before execution. SQLite's
+parser validates statement tails and an authorizer denies non-read actions.
+These are scope restrictions, not a security sandbox.
+
+Results show column headers even when empty. Text is quoted and escaped, SQL null
+is shown as `(SQL NULL)`, and blobs use hexadecimal `X'…'` notation. At most 200
+rows are displayed; additional rows produce an explicit truncation message.
+
+Queries run off the UI thread, with one operation at a time. Run is disabled before
+connection and while busy; theme changes preserve SQL, results, and session state.
+New runs clear old results. Unsupported SQL, query errors, locks, and timeouts have
+distinct messages and allow retry without reconnecting.
+
+The connection waits up to one second for SQLite locks. Reads have a five-second
+cooperative deadline spanning preparation and stepping: progress callbacks interrupt
+the SQLite VM, rather than just abandoning the UI wait. A long built-in function or
+blocking I/O may delay the next callback; this is not a hard process-level timeout.
+Unknown or side-effecting functions and PRAGMA virtual tables are denied. Supported
+functions include common aggregates, string/date operations, and window functions.
+
+To bound copied results, SQL is capped at 16 KiB, columns at 256, each text/blob/name
+payload at 1 MiB, and total copied payload at 8 MiB. Limit violations are reported
+as unsupported; cells are never silently truncated. These caps do not bound all
+SQLite intermediate allocations. Invalid UTF-8 text produces a query error.
 
 Use the header's theme switch to change the entire app's theme:
 on selects **Dark mode**, off selects **Light mode**, and the label shows the
@@ -70,8 +106,13 @@ seed-once initialization, reopen persistence, external edits, empty tables,
 concurrent creation, permissions, invalid files, and preview limits. UI tests use
 the production Workbench with temporary paths and real clicks to verify opening,
 preview content, failure/retry, duplicate-opening prevention, and theme preservation.
+Read tests cover SQLite types, statement restrictions, row and payload limits,
+real exclusive locking, five-second VM interruption, and subsequent recovery.
+Query UI tests enter SQL through native input, verify results/error presentation,
+prevent duplicate runs, and change themes while a real query is running.
 Run individual targets with `cargo test --test database --locked`,
-`cargo test --test opening --locked`, or `cargo test --test theme --locked`.
+`cargo test --test opening --locked`, `cargo test --test theme --locked`,
+`cargo test --test reads --locked`, or `cargo test --test query --locked`.
 These tests verify behavior and native accessibility properties, not pixels or
 packaged-app restart. Native SQL read/write/restart acceptance belongs to the final
 demo ticket; this slice does not claim that workflow is complete.
@@ -81,11 +122,14 @@ demo ticket; this slice does not claim that workflow is complete.
 - `src/main.rs`: framework initialization, assets, window creation, and app lifecycle.
 - `src/lib.rs`: shared production modules for the binary and integration tests.
 - `src/database.rs`: demo path, atomic initialization, session, schema validation, preview.
-- `src/shell.rs`: shell composition, session state, and retained background opening task.
+- `src/database/read.rs`: guarded SELECT execution, typed results, limits, and errors.
+- `src/shell.rs`: shell composition, retained editor/session, and background tasks.
 - `src/shell/header.rs`: title, theme switch, and Open Demo Database button.
 - `src/shell/database_explorer.rs`: database explorer sidebar.
 - `src/shell/welcome_panel.rs`: welcome content.
 - `src/shell/notes_panel.rs`: scrollable file-backed notes preview.
+- `src/shell/query_panel.rs`: retained SQL editor and Run control.
+- `src/shell/query_results.rs`: scrollable typed query results and summaries.
 - `src/shell/status_bar.rs`: accessible connection status and framework label.
 
 The child modules render stateless elements. The shell owns the active session and
@@ -96,10 +140,9 @@ not the optional JavaScript extension system (`gpui-shell`).
 
 ## Next slices
 
-1. Execute bounded read statements through a SQL editor (issue #3).
-2. Add atomic committed writes (issue #4).
-3. Display returning write results without limiting the write (issue #5).
-4. Verify native restart and independent SQLite inspection (issue #6).
+1. Add atomic committed writes (issue #4).
+2. Display returning write results without limiting the write (issue #5).
+3. Verify native restart and independent SQLite inspection (issue #6).
 
 Startup follows the [GPUI Kit getting-started example](https://gpui-kit.com/docs/getting-started).
 GPUI Kit and its source examples are licensed under Apache-2.0.

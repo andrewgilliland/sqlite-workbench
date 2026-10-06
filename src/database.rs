@@ -6,6 +6,10 @@ use std::{
 
 use rusqlite::{Connection, OpenFlags};
 
+#[path = "database/read.rs"]
+mod read;
+pub use read::{CellValue, ReadError, ReadResult};
+
 #[derive(Debug, thiserror::Error)]
 pub enum DatabaseError {
     #[error("File access failed: {0}")]

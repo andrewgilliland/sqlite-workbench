@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 gpui-kit = "0.7.0"
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.38", features = ["bundled", "hooks"] }
 dirs = "6"
 tempfile = "3"
 thiserror = "2"
