@@ -39,10 +39,10 @@ local app-data directory. The UI shows the full resolved path.
 
 First creation atomically seeds `notes (id INTEGER PRIMARY KEY, body TEXT)`:
 
-| id | body |
-| --- | --- |
-| 1 | Welcome to SQLite Workbench |
-| 2 | Your changes stay in this local file |
+| id  | body                                 |
+| --- | ------------------------------------ |
+| 1   | Welcome to SQLite Workbench          |
+| 2   | Your changes stay in this local file |
 
 A fully initialized temporary file is published without overwriting another file.
 Existing files are validated, never silently reset or reseeded—even if all notes
