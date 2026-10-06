@@ -1,5 +1,5 @@
 use gpui_kit::component::{
-    ActiveTheme, Theme, ThemeMode,
+    ActiveTheme, Disableable, Theme, ThemeMode,
     button::{Button, ButtonVariants},
     switch::Switch,
 };
@@ -7,6 +7,7 @@ use gpui_kit::*;
 
 pub(super) fn render(
     cx: &App,
+    open_disabled: bool,
     on_open_database: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Div {
     let theme = cx.theme();
@@ -54,7 +55,8 @@ pub(super) fn render(
                 .child(
                     Button::new("open-database")
                         .primary()
-                        .label("Open Database")
+                        .label("Open Demo Database")
+                        .disabled(open_disabled)
                         .on_click(on_open_database),
                 ),
         )

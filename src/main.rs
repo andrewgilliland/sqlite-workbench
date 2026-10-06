@@ -1,7 +1,6 @@
-mod shell;
-
 use gpui_kit::component::Theme;
 use gpui_kit::*;
+use sqlite_workbench::shell;
 
 fn main() {
     application().with_assets(assets::Assets).run(|cx| {

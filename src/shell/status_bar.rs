@@ -1,7 +1,7 @@
 use gpui_kit::component::ActiveTheme;
 use gpui_kit::*;
 
-pub(super) fn render(status: &'static str, cx: &App) -> Div {
+pub(super) fn render(status: SharedString, cx: &App) -> Div {
     let theme = cx.theme();
 
     div()
@@ -18,7 +18,7 @@ pub(super) fn render(status: &'static str, cx: &App) -> Div {
             div()
                 .id("connection-status")
                 .role(Role::Status)
-                .aria_label(status)
+                .aria_label(status.clone())
                 .test_support()
                 .child(status),
         )

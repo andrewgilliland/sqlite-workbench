@@ -26,6 +26,6 @@ pub(super) fn render(cx: &App) -> Div {
                 .border_color(theme.border)
                 .text_sm()
                 .text_color(theme.muted_foreground)
-                .child("Shell ready. Database connections are coming next."),
+                .child("Open Demo Database to preview your local notes."),
         )
 }

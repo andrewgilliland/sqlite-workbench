@@ -8,6 +8,13 @@ publish = false
 
 [dependencies]
 gpui-kit = "0.7.0"
+rusqlite = { version = "0.38", features = ["bundled"] }
+dirs = "6"
+tempfile = "3"
+thiserror = "2"
 
 [dev-dependencies]
 gpui-kit = { version = "0.7.0", features = ["test-support"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"
