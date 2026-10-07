@@ -254,7 +254,13 @@ verified_observation() {
 
 cli_expect() {
   local label="$1" sql="$2" expected="$3" actual
-  [[ -f "$db" ]] || fail "Database missing; refusing CLI access: $db"
+  while [[ ! -f "$db" ]]; do
+    warn "The expected database does not exist yet: $db"
+    say "Keep this guide open. Switch to the native app and activate Open Demo Database."
+    say "Wait until its status says 'Demo database connected', then verify the displayed path."
+    say "If the app shows an opening error, answer no and share that error and the launch log."
+    confirm_native "Recheck the file after you have opened the demo and checked its connected status"
+  done
   printf '\n### Independent read-only CLI: %s\n\n' "$label" >> "$report"
   printf '```bash\nsqlite3 -readonly %q %q\n```\n' "$db" "$sql" >> "$report"
   if ! actual=$(sqlite3 -readonly "$db" "$sql" 2>> "$run_dir/cli.stderr.log"); then
@@ -359,6 +365,8 @@ printf '\n- Process-verified: cargo build --locked succeeded.\n' >> "$report"
 launch_native "$repo_root" 1
 step "Before connecting, verify Run is unavailable. Use Tab/Shift-Tab to reach Open Demo Database."
 step "Activate it using Space/Enter (no mouse); observe visible focus. Stop if it cannot be reached."
+step "Wait for the status bar to say 'Demo database connected' BEFORE answering the next prompts."
+step "A yes answer records your observation; it does not open the database for you."
 verified_observation OPEN_KEYBOARD "Run was unavailable before connection, and keyboard focus/activation opened the demo"
 step "Verify explorer shows notes and EXACTLY the full path printed above; never accept the normal user-data path."
 verified_observation FRESH_OPEN "Native demo opened at the exact isolated database path with the notes table"
@@ -381,7 +389,7 @@ verified_observation UPDATED_READ "Read displayed one Persistence verified row, 
 cli_expect "updated row before restart" "SELECT id, body FROM notes WHERE body='Persistence verified';" '3|Persistence verified'
 
 stage "Error recovery, keyboard access, themes, and busy state"
-ui_sql 'SELEC id FROM notes;'
+ui_sql 'SELECT FROM notes;'
 verified_observation INVALID_SQL "Invalid SQL displayed Query error and cleared previous successful results"
 ui_sql "SELECT id, body FROM notes WHERE body = 'Persistence verified';"
 verified_observation ERROR_RECOVERY "Valid read after the error displayed the updated row and Query complete: 1 rows"

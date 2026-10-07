@@ -25,13 +25,16 @@ Ctrl-Tab and Ctrl-Shift-Tab traversal, Cmd/Ctrl-Enter execution without a newlin
 native status labels, and session/result preservation across theme changes.
 Database-path coverage verifies absolute isolated paths and rejects relative ones.
 
-## Native acceptance — pending
+## Native acceptance — passed, evidence reviewed
 
-No native-window observations, process restart acceptance, or SQLite CLI inspection
-of a native-run file are claimed by the checks above. In particular, headless
-production-UI tests are not a substitute for those observations.
+The user completed all seven native stages in run `sqlite-workbench-native.fVKSie`.
+The report ends with `PASSED` at 2026-10-07T03:00:45Z. The observation record
+contains `ACCEPTANCE_COMPLETE=yes`; both native processes exited normally with
+code zero. The updated note survived restart from a different working directory
+and was independently inspected with SQLite before deletion through the app.
 
-Run [the native acceptance guide](native-acceptance.md). Preserve and supply the
-runner's generated `acceptance.md`, observation record, and logs. Issue #6 remains
-open until the report ends with `PASSED` and its evidence is reviewed. The parent
-spec issue and proposed ADR status remain unchanged.
+See [the reviewed evidence](native-acceptance-fVKSie.md) for the exact revision,
+platform, file, outcomes, and an explicit correction to the report's error-category
+wording. Native UI observations are human-reported; CLI and process checks are
+separate evidence, not inferred from automated tests. The parent spec issue and
+proposed ADR status remain unchanged.
