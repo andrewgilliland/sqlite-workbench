@@ -27,6 +27,8 @@ pub(super) fn render(
                 .flex_col()
                 .gap_3()
                 .child(div().text_lg().child("SQL query"))
+                .child(div().text_sm().text_color(cx.theme().muted_foreground)
+                    .child("Cmd/Ctrl+Enter: Run · Ctrl+Tab / Ctrl+Shift+Tab: move between controls"))
                 // Editor has no custom ID builder in 0.7.0. Keep a stable
                 // region ID; the inner input retains its own native identity.
                 .child(

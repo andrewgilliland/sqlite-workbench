@@ -112,6 +112,27 @@ on selects **Dark mode**, off selects **Light mode**, and the label shows the
 current mode. Startup matches the system
 appearance; manual changes last for the current session only.
 
+## Native demo and keyboard access
+
+Use [the native acceptance guide](docs/demo/native-acceptance.md) to run the
+restart/CLI demonstration without touching your normal demo data:
+
+```sh
+./scripts/verify-native-demo.sh
+```
+
+It creates a fresh isolated directory, builds and launches the native app, guides
+your window interactions, restarts from a different working directory, and records
+read-only SQLite CLI checks. It retains the database, observations, and logs.
+Native evidence is **pending** until a run's report ends with `PASSED`; tests alone
+do not satisfy that requirement.
+
+Tab navigates outside the editor. Ctrl-Tab / Ctrl-Shift-Tab leave the editor and
+move between controls; editor Tab remains indentation. Cmd-Enter on macOS
+(Ctrl-Enter elsewhere) runs SQL without inserting a newline. Enter/Space activate
+focused buttons and the theme switch. Keyboard focus is established at startup
+and moves to the editor when opening or running disables a control.
+
 ## Development checks
 
 ```sh
@@ -142,6 +163,7 @@ Run individual targets with `cargo test --test database --locked`,
 `cargo test --test reads --locked`, `cargo test --test query --locked`,
 `cargo test --test writes --locked`, `cargo test --test write_ui --locked`,
 `cargo test --test returning --locked`, or `cargo test --test returning_ui --locked`.
+Keyboard-only navigation and Run are covered by `cargo test --test keyboard --locked`.
 These tests verify behavior and native accessibility properties, not pixels or
 packaged-app restart. Native SQL read/write/restart acceptance belongs to the final
 demo ticket; this slice does not claim that workflow is complete.

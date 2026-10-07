@@ -33,6 +33,19 @@ pub fn demo_path() -> Result<PathBuf, DatabaseError> {
         .join("demo.sqlite3"))
 }
 
+/// An explicit, isolated demo location. Absolute paths keep identity stable across restarts.
+/// Resolution does not create or reset the database; normal opening owns that workflow.
+pub fn demo_path_in(directory: &Path) -> Result<PathBuf, DatabaseError> {
+    if !directory.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Demo data directory must be absolute",
+        )
+        .into());
+    }
+    Ok(directory.join("demo.sqlite3"))
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Note {
     pub id: i64,

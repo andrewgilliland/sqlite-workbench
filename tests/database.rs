@@ -1,6 +1,28 @@
 use sqlite_workbench::database::{DemoSession, Note};
 
 #[test]
+fn explicit_demo_directory_is_absolute_and_does_not_touch_default_data() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = sqlite_workbench::database::demo_path_in(directory.path()).unwrap();
+    assert_eq!(path, directory.path().join("demo.sqlite3"));
+    assert_ne!(path, sqlite_workbench::database::demo_path().unwrap());
+    assert!(!path.exists());
+    drop(DemoSession::open(&path).unwrap());
+    assert_eq!(
+        DemoSession::open(&path)
+            .unwrap()
+            .preview()
+            .unwrap()
+            .notes
+            .len(),
+        2
+    );
+    assert!(
+        sqlite_workbench::database::demo_path_in(std::path::Path::new("relative-dir")).is_err()
+    );
+}
+
+#[test]
 fn rejects_non_rowid_primary_keys_and_hidden_columns() {
     let directory = tempfile::tempdir().unwrap();
     for (index, schema) in [

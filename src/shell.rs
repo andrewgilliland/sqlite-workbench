@@ -26,6 +26,7 @@ pub struct Workbench {
     state: ConnectionState,
     open_task: Option<Task<()>>,
     editor: Option<Entity<EditorState>>,
+    keyboard_focus: Option<FocusHandle>,
     running: bool,
     query_task: Option<Task<()>>,
     query_started: bool,
@@ -51,6 +52,7 @@ impl Default for Workbench {
             state: ConnectionState::Disconnected,
             open_task: None,
             editor: None,
+            keyboard_focus: None,
             running: false,
             query_task: None,
             query_started: false,
@@ -68,6 +70,7 @@ impl Workbench {
             state: ConnectionState::Disconnected,
             open_task: None,
             editor: None,
+            keyboard_focus: None,
             running: false,
             query_task: None,
             query_started: false,
@@ -195,6 +198,14 @@ impl Workbench {
 
 impl Render for Workbench {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let keyboard_focus = self
+            .keyboard_focus
+            .get_or_insert_with(|| {
+                let handle = cx.focus_handle().tab_stop(false);
+                window.focus(&handle, cx);
+                handle
+            })
+            .clone();
         let editor = self
             .editor
             .get_or_insert_with(|| {
@@ -205,10 +216,18 @@ impl Render for Workbench {
                 })
             })
             .clone();
-        let on_open_database = cx.listener(|this, _, _, cx| {
+        let on_open_database = cx.listener(|this, _, window, cx| {
+            // The opening button leaves tab order while busy/connected.
+            // Advance before that happens rather than stranding keyboard focus.
+            window.focus_next(cx);
             this.open_demo(cx);
         });
-        let on_run = cx.listener(|this, _, _, cx| this.run_query(cx));
+        let on_run = cx.listener(|this, _, window, cx| {
+            if let Some(editor) = &this.editor {
+                window.focus(&editor.read(cx).focus_handle(cx), cx);
+            }
+            this.run_query(cx);
+        });
         let status: SharedString = match &self.state {
             ConnectionState::Disconnected => "No database connected".into(),
             ConnectionState::Opening => "Opening demo database…".into(),
@@ -241,6 +260,32 @@ impl Render for Workbench {
         };
 
         div()
+            .track_focus(&keyboard_focus)
+            .key_context("Workbench")
+            .on_key_down(|event, window, cx| {
+                let key = &event.keystroke;
+                if key.key == "tab"
+                    && key.modifiers.control
+                    && !key.modifiers.alt
+                    && !key.modifiers.platform
+                    && !key.modifiers.function
+                {
+                    if key.modifiers.shift {
+                        window.focus_prev(cx);
+                    } else {
+                        window.focus_next(cx);
+                    }
+                    cx.stop_propagation();
+                }
+            })
+            .capture_action(cx.listener(
+                |this, action: &gpui_kit::component::input::Enter, _, cx| {
+                    if action.secondary && !action.shift {
+                        this.run_query(cx);
+                        cx.stop_propagation();
+                    }
+                },
+            ))
             .flex()
             .flex_col()
             .size_full()
