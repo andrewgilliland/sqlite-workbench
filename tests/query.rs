@@ -82,7 +82,7 @@ async fn clears_stale_results_and_recovers_from_unsupported_and_invalid_sql(
     connect(cx, handle).await;
     for (sql, category) in [
         (
-            "UPDATE notes SET body = 'must not change' RETURNING body;",
+            "CREATE TABLE forbidden (id INTEGER PRIMARY KEY);",
             "Unsupported SQL:",
         ),
         (

@@ -20,7 +20,7 @@ pub(super) const MAX_SQL_BYTES: usize = 16 * 1024;
 const MAX_COLUMNS: usize = 256;
 const MAX_CELL_BYTES: usize = 1024 * 1024;
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
-const MAX_ROWS: usize = 200;
+pub(super) const MAX_ROWS: usize = 200;
 pub(super) const DEADLINE: Duration = Duration::from_secs(5);
 
 #[derive(Debug, PartialEq)]
@@ -82,16 +82,8 @@ impl DemoSession {
         if !statement.readonly() || statement.is_explain() != 0 || statement.column_count() == 0 {
             return Err(ReadError::Unsupported("Expected one readonly SELECT"));
         }
-        if statement.column_count() > MAX_COLUMNS {
-            return Err(ReadError::Unsupported("Result exceeds 256 columns"));
-        }
         let mut bytes = 0;
-        let mut columns = Vec::new();
-        for name in statement.column_names() {
-            guard.check_deadline()?;
-            reserve_payload(name.len(), &mut bytes)?;
-            columns.push(name.to_owned());
-        }
+        let columns = copy_columns(&statement, &guard, &mut bytes)?;
         guard.check_deadline()?;
         let mut cursor = guard.work(statement.query([]))?;
         let mut rows = Vec::new();
@@ -105,30 +97,7 @@ impl DemoSession {
                 truncated = true;
                 break;
             }
-            let mut cells = Vec::with_capacity(columns.len());
-            for column in 0..columns.len() {
-                guard.check_deadline()?;
-                let value = guard.work(row.get_ref(column))?;
-                let size = match value {
-                    ValueRef::Null => 0,
-                    ValueRef::Integer(_) | ValueRef::Real(_) => 8,
-                    ValueRef::Text(value) | ValueRef::Blob(value) => value.len(),
-                };
-                reserve_payload(size, &mut bytes)?;
-                cells.push(match value {
-                    ValueRef::Null => CellValue::Null,
-                    ValueRef::Integer(value) => CellValue::Integer(value),
-                    ValueRef::Real(value) => CellValue::Real(value),
-                    ValueRef::Text(value) => CellValue::Text(
-                        std::str::from_utf8(value)
-                            .map_err(|error| ReadError::Sql(rusqlite::Error::Utf8Error(error)))?
-                            .to_owned(),
-                    ),
-                    ValueRef::Blob(value) => CellValue::Blob(value.to_vec()),
-                });
-                guard.check_deadline()?;
-            }
-            rows.push(cells);
+            rows.push(copy_row(row, columns.len(), &guard, &mut bytes)?);
         }
         guard.check_deadline()?;
         Ok(ReadResult {
@@ -137,6 +106,56 @@ impl DemoSession {
             truncated,
         })
     }
+}
+
+pub(super) fn copy_columns(
+    statement: &rusqlite::Statement<'_>,
+    guard: &ReadGuard<'_>,
+    bytes: &mut usize,
+) -> Result<Vec<String>, ReadError> {
+    if statement.column_count() > MAX_COLUMNS {
+        return Err(ReadError::Unsupported("Result exceeds 256 columns"));
+    }
+    let mut columns = Vec::with_capacity(statement.column_count());
+    for name in statement.column_names() {
+        guard.check_deadline()?;
+        reserve_payload(name.len(), bytes)?;
+        columns.push(name.to_owned());
+        guard.check_deadline()?;
+    }
+    Ok(columns)
+}
+
+pub(super) fn copy_row(
+    row: &rusqlite::Row<'_>,
+    column_count: usize,
+    guard: &ReadGuard<'_>,
+    bytes: &mut usize,
+) -> Result<Vec<CellValue>, ReadError> {
+    let mut cells = Vec::with_capacity(column_count);
+    for column in 0..column_count {
+        guard.check_deadline()?;
+        let value = guard.work(row.get_ref(column))?;
+        let size = match value {
+            ValueRef::Null => 0,
+            ValueRef::Integer(_) | ValueRef::Real(_) => 8,
+            ValueRef::Text(value) | ValueRef::Blob(value) => value.len(),
+        };
+        reserve_payload(size, bytes)?;
+        cells.push(match value {
+            ValueRef::Null => CellValue::Null,
+            ValueRef::Integer(value) => CellValue::Integer(value),
+            ValueRef::Real(value) => CellValue::Real(value),
+            ValueRef::Text(value) => CellValue::Text(
+                std::str::from_utf8(value)
+                    .map_err(|error| ReadError::Sql(rusqlite::Error::Utf8Error(error)))?
+                    .to_owned(),
+            ),
+            ValueRef::Blob(value) => CellValue::Blob(value.to_vec()),
+        });
+        guard.check_deadline()?;
+    }
+    Ok(cells)
 }
 
 fn reserve_payload(size: usize, bytes: &mut usize) -> Result<(), ReadError> {

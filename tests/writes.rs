@@ -17,7 +17,10 @@ fn ordinary_writes_report_counts_only_after_commit_and_persist_on_reopen() {
     ] {
         assert_eq!(
             session.execute(sql).unwrap(),
-            ExecutionResult::Write { affected_rows },
+            ExecutionResult::Write {
+                affected_rows,
+                returned: None
+            },
             "{sql}"
         );
     }
@@ -44,7 +47,7 @@ fn ordinary_writes_report_counts_only_after_commit_and_persist_on_reopen() {
 }
 
 #[test]
-fn rejects_scripts_returning_and_out_of_scope_actions_before_any_changes() {
+fn rejects_scripts_and_out_of_scope_actions_before_any_changes() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("demo.sqlite3");
     let mut session = DemoSession::open(&path).unwrap();
@@ -64,12 +67,6 @@ fn rejects_scripts_returning_and_out_of_scope_actions_before_any_changes() {
         "SELECT 1; INSERT INTO notes(body) VALUES ('bad')",
         "WITH n AS (SELECT 1) UPDATE notes SET body='bad'; SELECT 2",
         "INSERT INTO notes(body) VALUES ('bad'); BEGIN",
-        "INSERT INTO notes(body) VALUES ('bad') RETURNING id",
-        "UPDATE notes SET body='bad' RETURNING body",
-        "DELETE FROM notes RETURNING id",
-        "WITH \"select\" AS (SELECT 1) INSERT INTO notes(body) SELECT 'bad' FROM \"select\" RETURNING id",
-        "WITH n AS (SELECT 1) UPDATE notes SET body='bad' RETURNING id",
-        "WITH n AS (SELECT 1) DELETE FROM notes RETURNING id",
         "CREATE TABLE unwanted(id)",
         "DROP TABLE notes",
         "ALTER TABLE notes ADD COLUMN extra",
@@ -111,7 +108,10 @@ fn rejects_scripts_returning_and_out_of_scope_actions_before_any_changes() {
             session
                 .execute("UPDATE notes SET body=body WHERE 0")
                 .unwrap(),
-            ExecutionResult::Write { affected_rows: 0 }
+            ExecutionResult::Write {
+                affected_rows: 0,
+                returned: None
+            }
         );
     }
     let oversized = format!(
@@ -158,7 +158,10 @@ fn accepts_cte_writes_quoted_comments_and_safe_functions_without_row_limit() {
     let mut session = DemoSession::open(directory.path().join("demo.sqlite3")).unwrap();
     assert_eq!(
         session.execute("DELETE FROM notes").unwrap(),
-        ExecutionResult::Write { affected_rows: 2 }
+        ExecutionResult::Write {
+            affected_rows: 2,
+            returned: None
+        }
     );
     for sql in [
         "\u{feff} -- INSERT ignored;\n ; /* ; */ ; INSERT INTO main.\"notes\"(body) VALUES ('it''s;fine'); ; -- tail ;",
@@ -167,12 +170,15 @@ fn accepts_cte_writes_quoted_comments_and_safe_functions_without_row_limit() {
     ] {
         assert_eq!(
             session.execute(sql).unwrap(),
-            ExecutionResult::Write { affected_rows: 1 },
+            ExecutionResult::Write {
+                affected_rows: 1,
+                returned: None
+            },
             "{sql}"
         );
     }
-    assert_eq!(session.execute("WITH explain AS (SELECT 'CTE;ONE' AS v) UPDATE notes SET body=upper(body) WHERE upper(body)=(SELECT v FROM explain)").unwrap(), ExecutionResult::Write { affected_rows: 1 });
-    assert_eq!(session.execute("WITH édelete AS (SELECT 'cte;two' AS v) DELETE FROM notes WHERE body=(SELECT v FROM édelete)").unwrap(), ExecutionResult::Write { affected_rows: 1 });
+    assert_eq!(session.execute("WITH explain AS (SELECT 'CTE;ONE' AS v) UPDATE notes SET body=upper(body) WHERE upper(body)=(SELECT v FROM explain)").unwrap(), ExecutionResult::Write { affected_rows: 1, returned: None });
+    assert_eq!(session.execute("WITH édelete AS (SELECT 'cte;two' AS v) DELETE FROM notes WHERE body=(SELECT v FROM édelete)").unwrap(), ExecutionResult::Write { affected_rows: 1, returned: None });
     assert_eq!(
         session
             .read("SELECT body FROM notes ORDER BY id")
@@ -183,7 +189,7 @@ fn accepts_cte_writes_quoted_comments_and_safe_functions_without_row_limit() {
             vec![CellValue::Text("CTE;ONE".into())]
         ]
     );
-    assert_eq!(session.execute("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1000) INSERT INTO notes(body) SELECT 'bulk' FROM n").unwrap(), ExecutionResult::Write { affected_rows: 1000 });
+    assert_eq!(session.execute("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1000) INSERT INTO notes(body) SELECT 'bulk' FROM n").unwrap(), ExecutionResult::Write { affected_rows: 1000, returned: None });
     assert_eq!(
         session
             .read("SELECT count(*) FROM notes WHERE body='bulk'")
@@ -208,7 +214,10 @@ fn deleting_all_notes_and_reopening_never_reseeds() {
     let mut session = DemoSession::open(&path).unwrap();
     assert_eq!(
         session.execute("DELETE FROM notes").unwrap(),
-        ExecutionResult::Write { affected_rows: 2 }
+        ExecutionResult::Write {
+            affected_rows: 2,
+            returned: None
+        }
     );
     drop(session);
     let mut reopened = DemoSession::open(&path).unwrap();
@@ -221,13 +230,19 @@ fn deleting_all_notes_and_reopening_never_reseeds() {
     );
     assert_eq!(
         reopened.execute("DELETE FROM notes").unwrap(),
-        ExecutionResult::Write { affected_rows: 0 }
+        ExecutionResult::Write {
+            affected_rows: 0,
+            returned: None
+        }
     );
     assert_eq!(
         reopened
             .execute("INSERT INTO notes(body) VALUES ('fresh')")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 1 }
+        ExecutionResult::Write {
+            affected_rows: 1,
+            returned: None
+        }
     );
     drop(reopened);
     assert_eq!(
@@ -273,7 +288,10 @@ fn constraint_failures_rollback_partial_changes_and_ignore_commits_selected_rows
             session
                 .execute("UPDATE notes SET body=body WHERE 0")
                 .unwrap(),
-            ExecutionResult::Write { affected_rows: 0 }
+            ExecutionResult::Write {
+                affected_rows: 0,
+                returned: None
+            }
         );
         assert_eq!(
             DemoSession::open(&path)
@@ -287,7 +305,10 @@ fn constraint_failures_rollback_partial_changes_and_ignore_commits_selected_rows
         session
             .execute("INSERT OR IGNORE INTO notes VALUES (3, 'third'), (4, 'first'), (5, 'fifth')")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 2 }
+        ExecutionResult::Write {
+            affected_rows: 2,
+            returned: None
+        }
     );
     drop(session);
     assert_eq!(
@@ -336,7 +357,10 @@ fn invalid_sql_and_invalid_tails_are_sql_errors_without_first_statement_effects(
             session
                 .execute("UPDATE notes SET body=body WHERE 0")
                 .unwrap(),
-            ExecutionResult::Write { affected_rows: 0 }
+            ExecutionResult::Write {
+                affected_rows: 0,
+                returned: None
+            }
         );
     }
 }
@@ -392,7 +416,10 @@ fn commit_lock_failure_rolls_back_before_returning_and_the_session_recovers() {
         session
             .execute("INSERT INTO notes(body) VALUES ('recovered')")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 1 }
+        ExecutionResult::Write {
+            affected_rows: 1,
+            returned: None
+        }
     );
     drop(session);
     assert_eq!(
@@ -437,7 +464,10 @@ fn exclusive_lock_during_write_preparation_is_bounded_and_recovers() {
         session
             .execute("INSERT INTO notes(body) VALUES ('recovered')")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 1 }
+        ExecutionResult::Write {
+            affected_rows: 1,
+            returned: None
+        }
     );
     assert_eq!(
         session.read("SELECT count(*) FROM notes").unwrap().rows,
@@ -490,7 +520,10 @@ fn real_recursive_insert_times_out_rolls_back_and_cleans_hooks_before_returning(
         session
             .execute("INSERT INTO notes(body) VALUES ('recovered')")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 1 }
+        ExecutionResult::Write {
+            affected_rows: 1,
+            returned: None
+        }
     );
     assert_eq!(
         session
@@ -521,7 +554,10 @@ fn triggers_may_write_notes_but_cannot_write_other_tables() {
         session
             .execute("INSERT INTO notes(body) VALUES ('triggered')")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 1 }
+        ExecutionResult::Write {
+            affected_rows: 1,
+            returned: None
+        }
     );
     assert_eq!(
         session
@@ -554,7 +590,10 @@ fn triggers_may_write_notes_but_cannot_write_other_tables() {
         session
             .execute("UPDATE notes SET body='recovered' WHERE id=3")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 1 }
+        ExecutionResult::Write {
+            affected_rows: 1,
+            returned: None
+        }
     );
     assert_eq!(
         session
@@ -602,7 +641,10 @@ fn reserved_write_lock_rolls_back_the_started_transaction_and_recovers() {
         session
             .execute("UPDATE notes SET body='recovered' WHERE id=1")
             .unwrap(),
-        ExecutionResult::Write { affected_rows: 1 }
+        ExecutionResult::Write {
+            affected_rows: 1,
+            returned: None
+        }
     );
     assert_eq!(
         session

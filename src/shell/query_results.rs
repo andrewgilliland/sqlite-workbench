@@ -12,14 +12,23 @@ pub(super) fn render(
         None => outcome_summary.unwrap_or("No query results").to_owned(),
         Some(result) if result.rows.is_empty() => "No rows returned".to_owned(),
         Some(result) => format!(
-            "{} rows{}",
+            "{} rows{}{}",
             result.rows.len(),
+            if outcome_summary.is_some() {
+                " returned"
+            } else {
+                ""
+            },
             if result.truncated {
                 " (truncated to 200 rows)"
             } else {
                 ""
             }
         ),
+    };
+    let summary = match (outcome_summary, result) {
+        (Some(outcome), Some(_)) => format!("{outcome}; {summary}"),
+        _ => summary,
     };
     let mut panel = div()
         .flex()

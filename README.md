@@ -60,8 +60,8 @@ SELECT id, body FROM notes ORDER BY id;
 ```
 
 Run one SELECT, INSERT, UPDATE, or DELETE, including common table expressions.
-Comments, a trailing terminator, and quoted semicolons are accepted. Scripts,
-writes with RETURNING, schema changes, PRAGMAs, attachments, transaction controls,
+Comments, a trailing terminator, and quoted semicolons are accepted. Writes may
+include RETURNING. Scripts, schema changes, PRAGMAs, attachments, transaction controls,
 EXPLAIN, and top-level VALUES are rejected before execution. SQLite's parser
 validates the entire statement tail before any write; an authorizer permits only
 supported actions. Writes target the demo's `notes` table, not arbitrary tables.
@@ -71,6 +71,13 @@ Writes commit immediately, with no Save action. The app displays **Write committ
 N rows affected** only after COMMIT succeeds; zero affected rows is valid. Counts
 exclude changes made by triggers. A new run clears the prior outcome, so failed
 writes never reuse an earlier successful count. Read changes back with a SELECT.
+
+RETURNING writes show their columns and typed rows alongside the full affected-row
+count after commit. Empty returned results retain their headers. Only the first
+200 rows are copied for display, but the entire statement is stepped to completion
+and committed—even when more than 200 rows are returned. Truncation limits the
+display, never the number of persisted changes. Result-copy errors roll back the
+write; no collected rows are presented as committed success on a failed write.
 
 Each write owns an internal transaction. Constraint failures (including partial
 `OR FAIL` execution), lock failures, interrupted writes, and commit failures roll
@@ -123,14 +130,18 @@ Read tests cover SQLite types, statement restrictions, row and payload limits,
 real exclusive locking, five-second VM interruption, and subsequent recovery.
 Query UI tests enter SQL through native input, verify results/error presentation,
 prevent duplicate runs, and change themes while a real query is running.
-Write tests cover CRUD, zero counts, reopened persistence, script/RETURNING
+Write tests cover CRUD, zero counts, reopened persistence, script
 rejection, partial constraint failures, interrupted inserts, and actual lock
 failures during execution and commit. Write UI tests enter SQL through native
 input and verify committed counts, recovery, duplicate prevention, and persistence.
+RETURNING tests verify typed/empty results, row-cap boundaries, persistence of
+changes beyond the display cap, result-copy failure rollback, timeout and commit
+failure recovery, and production-UI theme/session preservation.
 Run individual targets with `cargo test --test database --locked`,
 `cargo test --test opening --locked`, `cargo test --test theme --locked`,
 `cargo test --test reads --locked`, `cargo test --test query --locked`,
-`cargo test --test writes --locked`, or `cargo test --test write_ui --locked`.
+`cargo test --test writes --locked`, `cargo test --test write_ui --locked`,
+`cargo test --test returning --locked`, or `cargo test --test returning_ui --locked`.
 These tests verify behavior and native accessibility properties, not pixels or
 packaged-app restart. Native SQL read/write/restart acceptance belongs to the final
 demo ticket; this slice does not claim that workflow is complete.
@@ -159,8 +170,7 @@ not the optional JavaScript extension system (`gpui-shell`).
 
 ## Next slices
 
-1. Display returning write results without limiting the write (issue #5).
-2. Verify native restart and independent SQLite inspection (issue #6).
+1. Verify native restart and independent SQLite inspection (issue #6).
 
 Startup follows the [GPUI Kit getting-started example](https://gpui-kit.com/docs/getting-started).
 GPUI Kit and its source examples are licensed under Apache-2.0.

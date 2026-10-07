@@ -233,7 +233,7 @@ async fn closing_and_reopening_workbench_preserves_writes_and_never_reseeds_empt
 }
 
 #[gpui_kit::test]
-async fn returning_scripts_and_partial_constraint_failure_clear_outcomes_and_allow_retry(
+async fn forbidden_sql_scripts_and_partial_constraint_failure_clear_outcomes_and_allow_retry(
     cx: &mut TestAppContext,
 ) {
     let directory = tempfile::tempdir().unwrap();
@@ -241,15 +241,12 @@ async fn returning_scripts_and_partial_constraint_failure_clear_outcomes_and_all
     let handle = open_window(cx, path.clone());
     connect(cx, handle).await;
     for (sql, category) in [
+        ("PRAGMA user_version=7;", "Unsupported SQL:"),
         (
-            "INSERT INTO notes(body) VALUES ('forbidden') RETURNING id;",
+            "CREATE TABLE forbidden (id INTEGER PRIMARY KEY);",
             "Unsupported SQL:",
         ),
-        (
-            "UPDATE notes SET body='forbidden' RETURNING body;",
-            "Unsupported SQL:",
-        ),
-        ("DELETE FROM notes RETURNING id;", "Unsupported SQL:"),
+        ("BEGIN;", "Unsupported SQL:"),
         (
             "INSERT INTO notes(body) VALUES ('forbidden'); DELETE FROM notes;",
             "Unsupported SQL:",
@@ -279,6 +276,19 @@ async fn returning_scripts_and_partial_constraint_failure_clear_outcomes_and_all
             expect_label(window, "connection-status", &status);
         })
         .unwrap();
+        let external = rusqlite::Connection::open(&path).unwrap();
+        let user_version: i64 = external
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(user_version, 0);
+        let forbidden_tables: i64 = external
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE name='forbidden'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(forbidden_tables, 0);
         read_cell(cx, handle, "SELECT count(*) FROM notes;", "2").await;
         read_cell(
             cx,

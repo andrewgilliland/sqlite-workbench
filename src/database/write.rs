@@ -4,21 +4,29 @@ use rusqlite::Transaction;
 
 use super::{
     DemoSession, ReadError, ReadResult,
-    read::{DEADLINE, MAX_SQL_BYTES, Operation, ReadGuard, main_operation},
+    read::{
+        DEADLINE, MAX_ROWS, MAX_SQL_BYTES, Operation, ReadGuard, copy_columns, copy_row,
+        main_operation,
+    },
 };
 
 #[derive(Debug, PartialEq)]
 pub enum ExecutionResult {
     Read(ReadResult),
-    Write { affected_rows: usize },
+    Write {
+        affected_rows: usize,
+        returned: Option<ReadResult>,
+    },
 }
 
 impl DemoSession {
     /// Execute one SELECT, INSERT, UPDATE or DELETE, including WITH forms.
     ///
     /// SELECT uses the existing bounded, read-only result contract. Writes
-    /// target main.notes only, disallow RETURNING, and report SQLite's affected
-    /// row count (excluding trigger effects) only after an immediate commit.
+    /// target main.notes only and report SQLite's affected row count (excluding
+    /// trigger effects) and optional RETURNING data only after an immediate commit.
+    /// RETURNING copies the same bounded typed payload as SELECT, but drains
+    /// every row to completion even after the 200-row display cap is reached.
     /// SQLite validates all statement tails before any changes. Schema changes,
     /// transaction commands and unaudited functions are not supported.
     ///
@@ -42,10 +50,10 @@ impl DemoSession {
         let guard = ReadGuard::install_write(&self.connection, deadline)?;
         // rusqlite recursively prepares the full tail with SQLite's parser.
         // No user statement steps, or internal transaction starts, until that
-        // validation and the no-RETURNING check have both succeeded.
+        // validation and the write classification have both succeeded.
         let mut statement = guard.work(self.connection.prepare(sql))?;
-        if statement.readonly() || statement.is_explain() != 0 || statement.column_count() != 0 {
-            return Err(ReadError::Unsupported("Expected a write without RETURNING"));
+        if statement.readonly() || statement.is_explain() != 0 {
+            return Err(ReadError::Unsupported("Expected one write statement"));
         }
         guard.check_deadline()?;
         let transaction = match guard.internal(|| self.connection.unchecked_transaction()) {
@@ -58,13 +66,51 @@ impl DemoSession {
         };
         // Construct the rollback owner before checking elapsed time, so even a
         // successful BEGIN that crossed the deadline cannot leak a transaction.
-        let result = guard
-            .check_deadline()
-            .and_then(|()| guard.work(statement.execute([])));
+        let result = (|| {
+            guard.check_deadline()?;
+            if statement.column_count() == 0 {
+                return guard.work(statement.execute([])).map(|count| (count, None));
+            }
+            let mut bytes = 0;
+            let columns = copy_columns(&statement, &guard, &mut bytes)?;
+            let mut rows = Vec::new();
+            let mut truncated = false;
+            let mut cursor = guard.work(statement.query([]))?;
+            loop {
+                guard.check_deadline()?;
+                let Some(row) = guard.work(cursor.next())? else {
+                    break;
+                };
+                if rows.len() == MAX_ROWS {
+                    // Only Rust-owned display data is capped. Keep the deadline
+                    // hook installed and step through SQLITE_DONE; SQLite itself
+                    // buffers RETURNING modifications before yielding its rows.
+                    truncated = true;
+                } else {
+                    rows.push(copy_row(row, columns.len(), &guard, &mut bytes)?);
+                }
+            }
+            drop(cursor);
+            guard.check_deadline()?;
+            let affected_rows = self.connection.changes() as usize;
+            Ok((
+                affected_rows,
+                Some(ReadResult {
+                    columns,
+                    rows,
+                    truncated,
+                }),
+            ))
+        })();
+        // Finalize before either committing or rolling back, including errors
+        // from copying or stepping. No pending rows escape on a failed commit.
         drop(statement);
-        let affected_rows = result?;
+        let (affected_rows, returned) = result?;
         pending.commit()?;
-        Ok(ExecutionResult::Write { affected_rows })
+        Ok(ExecutionResult::Write {
+            affected_rows,
+            returned,
+        })
     }
 }
 

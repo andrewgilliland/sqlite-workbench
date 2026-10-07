@@ -158,9 +158,18 @@ impl Workbench {
                                 }
                             )
                             .into(),
-                            ExecutionResult::Write { affected_rows } => {
-                                format!("Write committed: {affected_rows} rows affected").into()
-                            }
+                            ExecutionResult::Write {
+                                affected_rows,
+                                returned,
+                            } => format!(
+                                "Write committed: {affected_rows} rows affected{}",
+                                if returned.as_ref().is_some_and(|result| result.truncated) {
+                                    " (returned rows truncated to 200)"
+                                } else {
+                                    ""
+                                }
+                            )
+                            .into(),
                         });
                         this.results = Some(result);
                     }
@@ -221,8 +230,11 @@ impl Render for Workbench {
         );
         let (read_result, write_summary) = match &self.results {
             Some(ExecutionResult::Read(result)) => (Some(result), None),
-            Some(ExecutionResult::Write { affected_rows }) => (
-                None,
+            Some(ExecutionResult::Write {
+                affected_rows,
+                returned,
+            }) => (
+                returned.as_ref(),
                 Some(format!("Write committed: {affected_rows} rows affected")),
             ),
             None => (None, None),
